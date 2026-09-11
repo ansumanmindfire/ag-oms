@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache
+
+.env
+
+data/*.sqlite
+data/*.db
+data/qdrant_storage/
+logs/
+
+prod_spec
