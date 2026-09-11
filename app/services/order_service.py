@@ -1,0 +1,184 @@
+"""Order domain business logic service combining database operations and email delivery."""
+
+from typing import Dict, Any
+from sqlalchemy.orm import Session
+from app.repositories import OrderRepository, InventoryRepository
+from app.services.email_service import EmailService
+from app.exceptions.custom_exceptions import (
+    OrderNotFoundException,
+    InvalidOrderStatusException,
+    ProductNotFoundException,
+    InsufficientStockException,
+)
+from app.constants.constants import OrderStatus
+from app.config import logger
+
+
+class OrderService:
+    """Business logic service for orchestrating order placement, cancellation, stock changes, and email notifications."""
+
+    @staticmethod
+    def order_product(
+        db: Session,
+        product_id: str,
+        quantity: int,
+        customer_email: str,
+        remarks: str = "Order placed via Agent",
+    ) -> Dict[str, Any]:
+        """Process a new product order placement with inventory validation and email notification.
+
+        Args:
+            db (Session): Database session.
+            product_id (str): ID of product to order.
+            quantity (int): Units requested.
+            customer_email (str): Email address of customer.
+            remarks (str): Optional remarks string. Defaults to "Order placed via Agent".
+
+        Returns:
+            Dict[str, Any]: Execution details dictionary summarizing order status and confirmation message.
+
+        Raises:
+            ProductNotFoundException: If product_id does not exist in inventory.
+            InsufficientStockException: If available stock is less than requested quantity.
+        """
+        logger.info(f"Processing order placement for product '{product_id}', Qty: {quantity}, Email: '{customer_email}'")
+
+        # Fetch and validate product existence
+        product = InventoryRepository.get_product(db, product_id)
+        if not product:
+            raise ProductNotFoundException(product_id)
+
+        # Validate inventory stock availability
+        if product.quantity_available < quantity:
+            raise InsufficientStockException(
+                product_id=product_id,
+                requested=quantity,
+                available=product.quantity_available,
+            )
+
+        product_name = product.product_name
+        unit_price = product.price
+        total_price = unit_price * quantity
+
+        # Deduct inventory stock and write inventory audit log
+        InventoryRepository.update_stock(
+            db=db,
+            product_id=product_id,
+            quantity_change=-quantity,
+            change_type="DEDUCT",
+            remarks=f"Stock deducted for order placement ({quantity} unit(s))",
+        )
+
+        # Create order record and write order audit log
+        order = OrderRepository.create_order(
+            db=db,
+            product_id=product_id,
+            quantity=quantity,
+            customer_email=customer_email,
+            remarks=remarks,
+        )
+
+        # Send order confirmation email to customer
+        email_sent = EmailService.send_order_confirmation_email(
+            customer_email=customer_email,
+            order_id=order.order_id,
+            product_name=product_name,
+            quantity=quantity,
+            total_price=total_price,
+        )
+
+        return {
+            "success": True,
+            "order_id": order.order_id,
+            "product_id": order.product_id,
+            "product_name": product_name,
+            "quantity": order.quantity,
+            "status": order.status,
+            "customer_email": order.customer_email,
+            "total_price": total_price,
+            "email_sent": email_sent,
+            "message": f"Order #{order.order_id} placed successfully for {quantity} unit(s) of '{product_name}'. Confirmation email dispatched.",
+        }
+
+    @staticmethod
+    def cancel_order(
+        db: Session,
+        order_id: str,
+        remarks: str = "Order cancelled via Agent",
+    ) -> Dict[str, Any]:
+        """Process an order cancellation: update order status, restore inventory stock, and send cancellation email.
+
+        Args:
+            db (Session): Database session.
+            order_id (str): ID of order to cancel.
+            remarks (str): Reason/remarks for cancellation. Defaults to "Order cancelled via Agent".
+
+        Returns:
+            Dict[str, Any]: Execution details dictionary summarizing cancellation and stock restoration.
+
+        Raises:
+            OrderNotFoundException: If order_id does not exist in database.
+            InvalidOrderStatusException: If order is already in CANCELLED status.
+        """
+        logger.info(f"Processing order cancellation for Order ID '{order_id}'")
+
+        # Fetch and validate existing order
+        existing_order = OrderRepository.get_order(db, order_id)
+        if not existing_order:
+            raise OrderNotFoundException(order_id)
+
+        # Validate current order status
+        if existing_order.status == OrderStatus.CANCELLED:
+            raise InvalidOrderStatusException(
+                order_id=order_id,
+                current_status=existing_order.status,
+                action="cancellation",
+            )
+
+        customer_email = existing_order.customer_email
+        quantity = existing_order.quantity
+        product_id = existing_order.product_id
+
+        # Fetch product details for email dispatch
+        product = InventoryRepository.get_product(db, product_id)
+        product_name = product.product_name if product else product_id
+
+        # Update order status to CANCELLED in DB
+        cancelled_order = OrderRepository.update_order_status(
+            db=db,
+            order_id=order_id,
+            new_status=OrderStatus.CANCELLED,
+            remarks=remarks,
+        )
+
+        # Restore stock quantity to inventory and write inventory audit log
+        InventoryRepository.update_stock(
+            db=db,
+            product_id=product_id,
+            quantity_change=quantity,
+            change_type="RESTORE",
+            remarks=f"Stock restored due to cancellation of order '{order_id}'",
+        )
+
+        # Send cancellation confirmation email to customer
+        email_sent = False
+        if customer_email:
+            email_sent = EmailService.send_cancellation_email(
+                customer_email=customer_email,
+                order_id=order_id,
+                product_name=product_name,
+                quantity=quantity,
+            )
+
+        return {
+            "success": True,
+            "order_id": cancelled_order.order_id,
+            "product_id": cancelled_order.product_id,
+            "product_name": product_name,
+            "status": cancelled_order.status,
+            "quantity_restored": quantity,
+            "customer_email": customer_email,
+            "email_sent": email_sent,
+            "message": f"Order #{order_id} cancelled successfully. Restored {quantity} unit(s) to inventory stock.",
+        }
+
