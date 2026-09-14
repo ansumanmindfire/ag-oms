@@ -53,7 +53,7 @@ with st.sidebar:
                     ("files", (f.name, f.getvalue(), "application/pdf"))
                     for f in uploaded_files
                 ]
-                res = requests.post(UPLOAD_ENDPOINT, files=files_payload, timeout=60)
+                res = requests.post(UPLOAD_ENDPOINT, files=files_payload)
 
                 if res.status_code == 200:
                     st.success(f"Product Specifications successfully added.")
@@ -95,7 +95,7 @@ if prompt := st.chat_input("How can I help you today?"):
                     "prompt": prompt,
                     "session_id": st.session_state.session_id,
                 }
-                chat_res = requests.post(QUERY_ENDPOINT, json=payload, timeout=60)
+                chat_res = requests.post(QUERY_ENDPOINT, json=payload)
 
                 if chat_res.status_code == 200:
                     data = chat_res.json()
