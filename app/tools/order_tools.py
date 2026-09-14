@@ -50,7 +50,7 @@ class SearchProductsTool(BaseTool):
         """Synchronous execution of product search."""
         logger.info(f"Tool execution [search_inventory_products]: query='{query}'")
         results = InventoryService.search_products(db=self.db, query=query)
-        return json.dumps(results, indent=2)
+        return json.dumps(results, indent=2, default=str)
 
 
 class CheckInventoryTool(BaseTool):
@@ -70,7 +70,7 @@ class CheckInventoryTool(BaseTool):
         """Synchronous execution of stock check."""
         logger.info(f"Tool execution [check_inventory_stock]: product_id='{product_id}', quantity={quantity}")
         result = InventoryService.check_stock(db=self.db, product_id=product_id, quantity=quantity)
-        return json.dumps(result, indent=2)
+        return json.dumps(result, indent=2, default=str)
 
 
 class PlaceOrderTool(BaseTool):
@@ -105,7 +105,7 @@ class PlaceOrderTool(BaseTool):
                 customer_email=customer_email,
                 remarks=remarks or "Order placed via Agent Tool",
             )
-            return json.dumps(result, indent=2)
+            return json.dumps(result, indent=2, default=str)
         except Exception as err:
             logger.error(f"Error in PlaceOrderTool: {err}")
             return json.dumps({"success": False, "error": str(err)})

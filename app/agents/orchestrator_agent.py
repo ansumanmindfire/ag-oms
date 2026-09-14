@@ -9,6 +9,7 @@ from langchain.agents import create_agent
 
 from app.config import logger
 from app.repositories import ChatRepository
+from app.services.redis_service import redis_service
 from app.agents.order_agent import OrderAgent
 from app.agents.cancellation_agent import CancellationAgent
 from app.agents.enquiry_agent import EnquiryAgent
@@ -16,15 +17,19 @@ from app.agents.llm_factory import get_llm
 
 
 SUPERVISOR_SYSTEM_PROMPT = (
-    "You are the Master Supervisor Agent for an Agentic Order Management System.\n"
-    "Your responsibility is to assist customers by orchestrating and delegating tasks to specialized worker agents:\n"
-    "- Use `call_order_agent` for ordering products, purchasing items, checking product stock, or inquiring about available products.\n"
+    "You are the Customer Support Assistant for our store.\n"
+    "Your responsibility is to assist customers with product catalog inquiries, technical specifications, placing orders, checking stock, and handling cancellations.\n\n"
+    "INTERNAL TOOLS (FOR YOUR USE ONLY):\n"
+    "- Use `call_order_agent` for searching available products, checking inventory stock, or placing orders.\n"
     "- Use `call_cancellation_agent` for cancelling existing orders or verifying order cancellation status.\n"
-    "- Use `call_enquiry_agent` for product technical specifications, features, display, battery life, or warranty details.\n\n"
-    "CRITICAL INSTRUCTIONS:\n"
-    "- Analyze the customer request and conversation history carefully.\n"
-    "- Execute the appropriate worker tool(s).\n"
-    "- Always include the complete, detailed findings and response from the worker agent in your final answer to the user."
+    "- Use `call_enquiry_agent` for technical product specifications, smart features, display, battery life, or warranty details.\n\n"
+    "CRITICAL CONTEXT RESOLUTION:\n"
+    "- When delegating to internal tools (`call_order_agent`, `call_cancellation_agent`, `call_enquiry_agent`), you MUST resolve all references and pronouns from prior conversation turns (such as selected product names, product IDs, quantities, customer emails, or order IDs) into a self-contained, complete `request` parameter so the tool has all necessary facts to execute without needing prior turns.\n\n"
+    "CRITICAL OUTPUT & DELIVERY RULES (STRICT):\n"
+    "1. MANDATORY RESULT DELIVERY: When an internal tool executes and returns information (such as product names, prices, stock availability, specifications, or order confirmation), you MUST present those complete findings, prices, and details directly to the customer. NEVER reply with placeholders like 'let me check' when the tool has already provided the answer.\n"
+    "2. UNIFIED PERSONA: Speak directly to the customer in a warm, professional, helpful first-person tone ('We have the following options available for you...').\n"
+    "3. ZERO ARCHITECTURE LEAKS: NEVER mention internal agent names (such as 'Order Agent', 'Cancellation Agent', 'Supervisor Agent') or tool names (such as `call_order_agent`, `call_cancellation_agent`, `place_order`) to the customer.\n"
+    "4. NATURAL MISSING-INFO REQUESTS: If required information is missing to complete an action (such as customer email, quantity, or order ID), ask the customer for it directly (e.g., 'Could you please provide your email address so I can place this order?')."
 )
 
 
@@ -157,14 +162,28 @@ class MasterOrchestratorAgent:
 
         active_session_id = session_rec.id
 
-        # Rehydrate Conversation History
-        db_history = ChatRepository.get_history_messages(db, active_session_id, limit=10)
+        # Memory Fetch: Fast Redis RAM check with SQLite fallback (Cache-Aside Pattern)
         langchain_history: List[BaseMessage] = []
-        for msg in db_history:
-            if msg.sender == "user":
-                langchain_history.append(HumanMessage(content=msg.content))
-            elif msg.sender == "ai":
-                langchain_history.append(AIMessage(content=msg.content))
+        redis_msgs = redis_service.get_session_memory(active_session_id, limit=10)
+
+        if redis_msgs:
+            for msg in redis_msgs:
+                if msg.get("sender") == "user":
+                    langchain_history.append(HumanMessage(content=msg.get("content", "")))
+                elif msg.get("sender") == "ai":
+                    langchain_history.append(AIMessage(content=msg.get("content", "")))
+        else:
+            # Cache miss: fetch from SQLite and rehydrate Redis hot memory
+            db_history = ChatRepository.get_history_messages(db, active_session_id, limit=10)
+            for msg in db_history:
+                if msg.sender == "user":
+                    langchain_history.append(HumanMessage(content=msg.content))
+                elif msg.sender == "ai":
+                    langchain_history.append(AIMessage(content=msg.content))
+            redis_service.rehydrate_session_memory(
+                active_session_id,
+                [{"sender": m.sender, "content": m.content} for m in db_history],
+            )
 
         # Build Supervisor Tools and Supervisor Agent via create_agent
         supervisor_tools = get_supervisor_tools(db=db)
@@ -188,11 +207,14 @@ class MasterOrchestratorAgent:
         for msg in result_messages:
             msg.pretty_print()
 
+        # Dual Write: Persist permanently in SQLite and update hot Redis memory
         try:
             ChatRepository.save_message(db, active_session_id, sender="user", content=prompt)
             ChatRepository.save_message(db, active_session_id, sender="ai", content=answer_text)
         except Exception as save_err:
             logger.error(f"Failed to persist chat turns to DB: {save_err}")
+
+        redis_service.push_session_messages(active_session_id, prompt, answer_text)
 
         return {
             "session_id": active_session_id,

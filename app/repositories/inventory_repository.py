@@ -43,7 +43,7 @@ class InventoryRepository:
 
 
     @staticmethod
-    def create_product(db: Session, data: InventoryCreate) -> InventoryModel:
+    def create_product(db: Session, data: InventoryCreate, commit: bool = True) -> InventoryModel:
         """Create a new product in inventory and record initial audit log."""
         product = InventoryModel(
             product_id=data.product_id,
@@ -63,8 +63,9 @@ class InventoryRepository:
             remarks=f"Initial inventory creation for '{data.product_name}'",
         )
         db.add(audit)
-        db.commit()
-        db.refresh(product)
+        if commit:
+            db.commit()
+            db.refresh(product)
         return product
 
     @staticmethod
@@ -74,6 +75,7 @@ class InventoryRepository:
         quantity_change: int,
         change_type: str,
         remarks: str = "",
+        commit: bool = True,
     ) -> InventoryModel:
         """Adjust stock for a product and log entry in inventory_audit table."""
         product = InventoryRepository.get_product(db, product_id)
@@ -98,8 +100,9 @@ class InventoryRepository:
             remarks=remarks,
         )
         db.add(audit)
-        db.commit()
-        db.refresh(product)
+        if commit:
+            db.commit()
+            db.refresh(product)
         return product
 
     @staticmethod

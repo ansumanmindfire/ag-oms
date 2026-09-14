@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     seed_initial_inventory()
     yield
     logger.info("Shutting down Agentic Order Management System (AG-oms)...")
-    await redis_service.close()
+    redis_service.close()
 
 
 app = FastAPI(

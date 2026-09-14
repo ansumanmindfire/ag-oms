@@ -1,6 +1,6 @@
 """Order domain business logic service combining database operations and email delivery."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from app.repositories import OrderRepository, InventoryRepository
 from app.services.email_service import EmailService
@@ -9,6 +9,7 @@ from app.exceptions.custom_exceptions import (
     InvalidOrderStatusException,
     ProductNotFoundException,
     InsufficientStockException,
+    OrderOwnershipException,
 )
 from app.constants.constants import OrderStatus
 from app.config import logger
@@ -25,7 +26,7 @@ class OrderService:
         customer_email: str,
         remarks: str = "Order placed via Agent",
     ) -> Dict[str, Any]:
-        """Process a new product order placement with inventory validation and email notification.
+        """Process a new product order placement with atomic inventory deduction and email notification.
 
         Args:
             db (Session): Database session.
@@ -57,28 +58,37 @@ class OrderService:
             )
 
         product_name = product.product_name
-        unit_price = product.price
+        unit_price = float(product.price)
         total_price = unit_price * quantity
 
-        # Deduct inventory stock and write inventory audit log
-        InventoryRepository.update_stock(
-            db=db,
-            product_id=product_id,
-            quantity_change=-quantity,
-            change_type="DEDUCT",
-            remarks=f"Stock deducted for order placement ({quantity} unit(s))",
-        )
+        # Atomic transaction: Deduct stock, create order, and log audits
+        try:
+            InventoryRepository.update_stock(
+                db=db,
+                product_id=product_id,
+                quantity_change=-quantity,
+                change_type="DEDUCT",
+                remarks=f"Stock deducted for order placement ({quantity} unit(s))",
+                commit=False,
+            )
 
-        # Create order record and write order audit log
-        order = OrderRepository.create_order(
-            db=db,
-            product_id=product_id,
-            quantity=quantity,
-            customer_email=customer_email,
-            remarks=remarks,
-        )
+            order = OrderRepository.create_order(
+                db=db,
+                product_id=product_id,
+                quantity=quantity,
+                customer_email=customer_email,
+                remarks=remarks,
+                commit=False,
+            )
 
-        # Send order confirmation email to customer
+            db.commit()
+            db.refresh(order)
+        except Exception as err:
+            db.rollback()
+            logger.error(f"Failed to place order atomically: {err}")
+            raise err
+
+        # Send order confirmation email to customer after commit
         email_sent = EmailService.send_order_confirmation_email(
             customer_email=customer_email,
             order_id=order.order_id,
@@ -95,7 +105,7 @@ class OrderService:
             "quantity": order.quantity,
             "status": order.status,
             "customer_email": order.customer_email,
-            "total_price": total_price,
+            "total_price": float(total_price) if total_price is not None else 0.0,
             "email_sent": email_sent,
             "message": f"Order #{order.order_id} placed successfully for {quantity} unit(s) of '{product_name}'. Confirmation email dispatched.",
         }
@@ -104,6 +114,7 @@ class OrderService:
     def cancel_order(
         db: Session,
         order_id: str,
+        customer_email: Optional[str] = None,
         remarks: str = "Order cancelled via Agent",
     ) -> Dict[str, Any]:
         """Process an order cancellation: update order status, restore inventory stock, and send cancellation email.
@@ -111,6 +122,7 @@ class OrderService:
         Args:
             db (Session): Database session.
             order_id (str): ID of order to cancel.
+            customer_email (Optional[str]): Customer email for ownership verification.
             remarks (str): Reason/remarks for cancellation. Defaults to "Order cancelled via Agent".
 
         Returns:
@@ -119,13 +131,19 @@ class OrderService:
         Raises:
             OrderNotFoundException: If order_id does not exist in database.
             InvalidOrderStatusException: If order is already in CANCELLED status.
+            OrderOwnershipException: If customer_email does not match order record.
         """
-        logger.info(f"Processing order cancellation for Order ID '{order_id}'")
+        logger.info(f"Processing order cancellation for Order ID '{order_id}', Customer Email: '{customer_email}'")
 
         # Fetch and validate existing order
         existing_order = OrderRepository.get_order(db, order_id)
         if not existing_order:
             raise OrderNotFoundException(order_id)
+
+        # Validate ownership if email provided
+        if customer_email and customer_email.strip():
+            if existing_order.customer_email.strip().lower() != customer_email.strip().lower():
+                raise OrderOwnershipException(order_id)
 
         # Validate current order status
         if existing_order.status == OrderStatus.CANCELLED:
@@ -135,7 +153,7 @@ class OrderService:
                 action="cancellation",
             )
 
-        customer_email = existing_order.customer_email
+        recorded_email = existing_order.customer_email
         quantity = existing_order.quantity
         product_id = existing_order.product_id
 
@@ -143,28 +161,37 @@ class OrderService:
         product = InventoryRepository.get_product(db, product_id)
         product_name = product.product_name if product else product_id
 
-        # Update order status to CANCELLED in DB
-        cancelled_order = OrderRepository.update_order_status(
-            db=db,
-            order_id=order_id,
-            new_status=OrderStatus.CANCELLED,
-            remarks=remarks,
-        )
+        # Atomic transaction: update order status to CANCELLED and restore stock
+        try:
+            cancelled_order = OrderRepository.update_order_status(
+                db=db,
+                order_id=order_id,
+                new_status=OrderStatus.CANCELLED,
+                remarks=remarks,
+                commit=False,
+            )
 
-        # Restore stock quantity to inventory and write inventory audit log
-        InventoryRepository.update_stock(
-            db=db,
-            product_id=product_id,
-            quantity_change=quantity,
-            change_type="RESTORE",
-            remarks=f"Stock restored due to cancellation of order '{order_id}'",
-        )
+            InventoryRepository.update_stock(
+                db=db,
+                product_id=product_id,
+                quantity_change=quantity,
+                change_type="RESTORE",
+                remarks=f"Stock restored due to cancellation of order '{order_id}'",
+                commit=False,
+            )
 
-        # Send cancellation confirmation email to customer
+            db.commit()
+            db.refresh(cancelled_order)
+        except Exception as err:
+            db.rollback()
+            logger.error(f"Failed to cancel order atomically: {err}")
+            raise err
+
+        # Send cancellation confirmation email to customer after commit
         email_sent = False
-        if customer_email:
+        if recorded_email:
             email_sent = EmailService.send_cancellation_email(
-                customer_email=customer_email,
+                customer_email=recorded_email,
                 order_id=order_id,
                 product_name=product_name,
                 quantity=quantity,
@@ -177,7 +204,7 @@ class OrderService:
             "product_name": product_name,
             "status": cancelled_order.status,
             "quantity_restored": quantity,
-            "customer_email": customer_email,
+            "customer_email": recorded_email,
             "email_sent": email_sent,
             "message": f"Order #{order_id} cancelled successfully. Restored {quantity} unit(s) to inventory stock.",
         }

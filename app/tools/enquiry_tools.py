@@ -38,10 +38,12 @@ class SearchProductSpecsTool(BaseTool):
 
             formatted_results = [
                 {
+                    "product_name": doc.metadata.get("product_name", ""),
+                    "brand": doc.metadata.get("brand", ""),
+                    "category": doc.metadata.get("category", "general"),
                     "text": doc.page_content,
                     "source": doc.metadata.get("source", ""),
-                    "page_number": doc.metadata.get("page_number", 1),
-                    "score": doc.metadata.get("score", 0.0),
+                    "score": round(doc.metadata.get("score", 0.0), 4),
                 }
                 for doc in documents
             ]
