@@ -30,6 +30,7 @@ class OrderRepository:
         quantity: int,
         customer_email: str,
         remarks: str = "Order placed",
+        commit: bool = True,
     ) -> OrderModel:
         """Create a new Order record and write initial order audit log.
 
@@ -39,6 +40,7 @@ class OrderRepository:
             quantity (int): Order quantity.
             customer_email (str): Customer email address.
             remarks (str): Remarks for order placement.
+            commit (bool): Whether to immediately commit to database. Defaults to True.
 
         Returns:
             OrderModel: Newly created order model instance.
@@ -60,8 +62,9 @@ class OrderRepository:
             remarks=f"Order created successfully for customer '{customer_email}'",
         )
         db.add(order_audit)
-        db.commit()
-        db.refresh(order)
+        if commit:
+            db.commit()
+            db.refresh(order)
         return order
 
     @staticmethod
@@ -70,6 +73,7 @@ class OrderRepository:
         order_id: str,
         new_status: str,
         remarks: str = "",
+        commit: bool = True,
     ) -> OrderModel:
         """Update the status of an existing order and log an entry in order_audit table.
 
@@ -78,6 +82,7 @@ class OrderRepository:
             order_id (str): Order ID.
             new_status (str): Target new status (e.g. CANCELLED).
             remarks (str): Audit remarks.
+            commit (bool): Whether to immediately commit to database. Defaults to True.
 
         Returns:
             OrderModel: Updated order record.
@@ -100,8 +105,9 @@ class OrderRepository:
             remarks=remarks,
         )
         db.add(order_audit)
-        db.commit()
-        db.refresh(order)
+        if commit:
+            db.commit()
+            db.refresh(order)
         return order
 
     @staticmethod

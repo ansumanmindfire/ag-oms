@@ -12,6 +12,7 @@ services:
       - QDRANT_HOST=qdrant
       - REDIS_HOST=redis
     volumes:
+      - ./app:/code/app
       - ./data:/code/data
       - ./logs:/code/logs
     depends_on:

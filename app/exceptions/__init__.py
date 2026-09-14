@@ -6,6 +6,7 @@ from app.exceptions.custom_exceptions import (
     InsufficientStockException,
     OrderNotFoundException,
     InvalidOrderStatusException,
+    OrderOwnershipException,
 )
 from app.exceptions.handlers import (
     app_exception_handler,
@@ -20,6 +21,7 @@ __all__ = [
     "InsufficientStockException",
     "OrderNotFoundException",
     "InvalidOrderStatusException",
+    "OrderOwnershipException",
     "app_exception_handler",
     "global_exception_handler",
     "http_exception_handler",

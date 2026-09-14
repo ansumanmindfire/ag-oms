@@ -62,3 +62,14 @@ class InvalidOrderStatusException(BaseAppException):
             status_code=400,
             error_code="INVALID_ORDER_STATUS",
         )
+
+
+class OrderOwnershipException(BaseAppException):
+    """Raised when cancellation customer email does not match the order record."""
+
+    def __init__(self, order_id: str):
+        super().__init__(
+            message=f"Order cancellation unauthorized. The provided email does not match order '{order_id}'.",
+            status_code=403,
+            error_code="ORDER_OWNERSHIP_MISMATCH",
+        )

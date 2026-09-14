@@ -29,7 +29,7 @@ class InventoryService:
                 "category": p.category,
                 "description": p.description,
                 "quantity_available": p.quantity_available,
-                "price": p.price,
+                "price": float(p.price) if p.price is not None else 0.0,
             }
             for p in products
         ]
@@ -60,7 +60,7 @@ class InventoryService:
             }
 
         is_sufficient = product.quantity_available >= quantity
-        total_price = product.price * quantity
+        total_price = float(product.price * quantity) if product.price is not None else 0.0
 
         logger.info(
             f"Stock check for '{product_id}': Requested {quantity}, Available {product.quantity_available}, Sufficient: {is_sufficient}"
@@ -72,8 +72,7 @@ class InventoryService:
             "product_name": product.product_name,
             "quantity_requested": quantity,
             "quantity_available": product.quantity_available,
-            "unit_price": product.price,
-            "total_price": total_price,
+            "unit_price": float(product.price) if product.price is not None else 0.0,
+            "total_estimated_price": total_price,
             "reason": "Stock is available." if is_sufficient else f"Only {product.quantity_available} unit(s) available, but {quantity} requested.",
         }
-

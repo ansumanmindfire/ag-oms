@@ -113,6 +113,9 @@ class QdrantVectorService:
                     "text": doc.page_content,
                     "source": doc.metadata.get("source", "unknown"),
                     "page_number": doc.metadata.get("page_number", 1),
+                    "category": doc.metadata.get("category", "general"),
+                    "product_name": doc.metadata.get("product_name", ""),
+                    "brand": doc.metadata.get("brand", ""),
                 },
             )
             for doc, dense_vec, sparse_emb in zip(chunks, dense_embeddings, sparse_embeddings)
@@ -178,6 +181,9 @@ class QdrantVectorService:
                     metadata={
                         "source": hit.payload.get("source", ""),
                         "page_number": hit.payload.get("page_number", 1),
+                        "category": hit.payload.get("category", "general"),
+                        "product_name": hit.payload.get("product_name", ""),
+                        "brand": hit.payload.get("brand", ""),
                         "score": hit.score,
                     },
                 )
