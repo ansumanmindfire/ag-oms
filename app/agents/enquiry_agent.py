@@ -6,19 +6,9 @@ from langchain.agents import create_agent
 
 from app.config import settings, logger
 from app.tools.enquiry_tools import SearchProductSpecsTool
-from app.agents.llm_factory import get_llm
+from app.agents.llm_factory import get_llm, extract_text_content
 
-
-ENQUIRY_AGENT_SYSTEM_PROMPT = (
-    "You are the Enquiry Agent for an Agentic Order Management System.\n"
-    "Your responsibility is to assist customers with product technical specifications, smart features, Wi-Fi capabilities, energy ratings, noise levels, and warranty details.\n\n"
-    "Strict Behavior Guidelines:\n"
-    "- Always use `search_product_specs(query)` to retrieve specification context from Qdrant Vector DB.\n"
-    "- Base your answers strictly on the retrieved specification text snippets.\n"
-    "- Present all technical specifications, feature details, numbers, dimensions, battery life, and warranty terms in clear, explicit bullet points.\n"
-    "- If no specification documents match, inform the customer politely that no specification for the required product is present at the moment and ask them to try after sometime."
-)
-
+from app.prompts import ENQUIRY_AGENT_SYSTEM_PROMPT
 
 class EnquiryAgent:
     """Specialized Agent for handling product specification enquiry workflows using create_agent."""
@@ -51,5 +41,5 @@ class EnquiryAgent:
         result = self.agent.invoke({"messages": messages})
         result_messages = result.get("messages", [])
 
-        final_answer = str(result_messages[-1].content) if result_messages else ""
+        final_answer = extract_text_content(result_messages[-1].content) if result_messages else ""
         return {"answer": final_answer}

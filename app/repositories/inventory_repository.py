@@ -18,10 +18,13 @@ class InventoryRepository:
         return db.query(InventoryModel).filter(InventoryModel.product_id == product_id).first()
 
     @staticmethod
-    def search_products(db: Session, query: str) -> List[InventoryModel]:
-        """Search products by name, category, description, or product_id using case-insensitive SQL LIKE pattern."""
+    def search_products(db: Session, query: str = "") -> List[InventoryModel]:
+        """Search products by name, category, description, or product_id using case-insensitive SQL LIKE pattern.
+        If query is empty string, returns all products in the database.
+        """
         if not query or not query.strip():
-            return []
+            return InventoryRepository.list_products(db)
+
         search_pattern = f"%{query.strip().lower()}%"
         return (
             db.query(InventoryModel)
