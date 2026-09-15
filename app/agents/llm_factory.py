@@ -78,6 +78,5 @@ def extract_text_content(content: Any) -> str:
     else:
         raw_text = str(content)
 
-    # Escape dollar signs to prevent markdown renderers (like Streamlit) from treating prices as LaTeX math formulas
     return raw_text.replace(r"\$", "$").replace("$", r"\$")
 

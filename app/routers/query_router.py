@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas import AgentChatRequest, AgentChatResponse
-from app.agents import master_orchestrator
+from app.agents import run_oms_graph
 
 router = APIRouter(prefix="/query", tags=["Agent Query"])
 
@@ -13,10 +13,10 @@ router = APIRouter(prefix="/query", tags=["Agent Query"])
 def process_query(data: AgentChatRequest, db: Session = Depends(get_db)):
     """Conversational endpoint for user queries (order placement, cancellation, product enquiry).
 
-    Receives natural language prompt and optional session_id, runs Master Orchestrator,
-    and returns synthesized response + execution details.
+    Receives natural language prompt and optional session_id, executes the LangGraph
+    StateGraph workflow with multi-turn state persistence, and returns synthesized response.
     """
-    result = master_orchestrator.run(
+    result = run_oms_graph(
         prompt=data.prompt,
         db=db,
         session_id=data.session_id,
@@ -25,6 +25,3 @@ def process_query(data: AgentChatRequest, db: Session = Depends(get_db)):
         session_id=result["session_id"],
         answer=result["answer"],
     )
-
-
-
