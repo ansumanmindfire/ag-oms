@@ -28,9 +28,10 @@ class Settings:
     # API Keys & LLM Configuration
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openrouter")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-3.6-flash")
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "groq")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen/qwen3.6-27b")
 
 
 

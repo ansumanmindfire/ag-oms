@@ -13,27 +13,9 @@ from app.services.redis_service import redis_service
 from app.agents.order_agent import OrderAgent
 from app.agents.cancellation_agent import CancellationAgent
 from app.agents.enquiry_agent import EnquiryAgent
-from app.agents.llm_factory import get_llm
+from app.agents.llm_factory import get_llm, extract_text_content
 
-
-SUPERVISOR_SYSTEM_PROMPT = (
-    "You are the Customer Support Assistant for our ecommerce store.\n"
-    "Your responsibility is to assist customers with product catalog inquiries, technical specifications, placing orders, checking stock, and handling cancellations.\n\n"
-    "INTERNAL TOOLS (For your use only, never expose any tool name to the user via any response):\n"
-    "- Use `call_order_agent` for searching available products, checking inventory stock, or placing orders.\n"
-    "- Use `call_cancellation_agent` for cancelling existing orders or verifying order cancellation status.\n"
-    "- Use `call_enquiry_agent` for technical product specifications, smart features, display, battery life, or warranty details.\n\n"
-    "CRITICAL CONTEXT RESOLUTION:\n"
-    "- When delegating to internal tools (`call_order_agent`, `call_cancellation_agent`, `call_enquiry_agent`), you MUST resolve all references and pronouns from prior conversation turns (such as selected product names, product IDs, quantities, customer emails, or order IDs) into a self-contained, complete `request` parameter so the tool has all necessary facts to execute without needing prior turns.\n\n"
-    "CRITICAL OUTPUT & DELIVERY RULES (*STRICT*):\n"
-    "1. EXACT DATA PRESERVATION (MANDATORY): When an internal tool executes and returns information (such as product lists, prices, stock quantities, technical specifications, or order numbers), you MUST present ALL of those exact findings, items, prices, specs, and exact `order_id` values directly to the customer. DO NOT expose technical labels like 'Product ID: PROD-003'. NEVER fabricate fake order IDs (like '#ORD-001234'); always pass the exact `order_id` returned by the tool.\n"
-    "2. SINGLE TOOL EXECUTION: Once an internal tool returns the requested information, DO NOT execute the same tool again for the same query. Present the returned findings to the customer from the respective internal tool.\n"
-    "3. UNIFIED PERSONA: Speak directly to the customer in a warm, professional, helpful first-person tone (e.g. 'We have the following options available for you...').\n"
-    "4. ZERO ARCHITECTURE LEAKS: NEVER mention internal agent names (such as 'Order Agent', 'Cancellation Agent', 'Supervisor Agent') or tool names (such as `call_order_agent`, `call_cancellation_agent`, `place_order`) to the customer.\n"
-    "5. NATURAL MISSING-INFO REQUESTS: If required information is missing to complete an action (such as customer email, quantity, or order ID), ask the customer for it directly in a polite manner (e.g., 'Could you please provide your email address so I can place this order?').\n"
-    "6. ZERO HALLUCINATION ON EMPTY RESULTS: If an internal tool confirms 0 products exist for a category or query, state politely that no matching items are currently available in the catalog. NEVER invent, fabricate, or list unseeded product models or brands (such as Samsung, LG, Sony, etc.) under any circumstances."
-)
-
+from app.prompts import SUPERVISOR_SYSTEM_PROMPT
 
 # Pydantic Schemas for Supervisor Tools
 
@@ -57,7 +39,7 @@ class CallEnquiryAgentInput(BaseModel):
     """Input schema for delegating technical product spec questions to Enquiry Agent."""
     request: str = Field(
         ...,
-        description="Detailed customer enquiry about product technical specifications, smart features, Wi-Fi, battery life, display, noise ratings, or warranty."
+        description="Detailed customer enquiry about product comparisons, side-by-side feature differences, technical specifications, smart features, Wi-Fi, battery life, display, noise ratings, or warranty."
     )
 
 
@@ -107,8 +89,9 @@ class CallEnquiryAgentTool(BaseTool):
 
     name: str = "call_enquiry_agent"
     description: str = (
-        "Useful for technical product specifications, smart features, Wi-Fi capabilities, "
-        "battery life, display specs, noise levels, or warranty details. "
+        "Useful for comparing products in the store, side-by-side feature comparisons, "
+        "technical product specifications, smart features, Wi-Fi capabilities, battery life, "
+        "display specs, noise levels, or warranty details. "
         "Delegates task to the specialized Enquiry Agent."
     )
     args_schema: Type[BaseModel] = CallEnquiryAgentInput
@@ -203,7 +186,7 @@ class MasterOrchestratorAgent:
         result_messages = result.get("messages", [])
 
         # Extract AIMessage content
-        answer_text = str(result_messages[-1].content) if result_messages else "No response generated."
+        answer_text = extract_text_content(result_messages[-1].content) if result_messages else "No response generated."
 
         # Print step-by-step agent decision using pretty_print()
         for msg in result_messages:

@@ -10,15 +10,17 @@ class InventoryService:
     """Business logic for checking product availability and stock validation."""
 
     @staticmethod
-    def search_products(db: Session, query: str) -> List[Dict[str, Any]]:
+    def search_products(db: Session, query: str = "") -> List[Dict[str, Any]]:
         """Search products in inventory matching query string.
+
+        If query is an empty string, returns all products in inventory.
 
         Args:
             db (Session): Database session.
-            query (str): Search term for product name or product_id.
+            query (str, optional): Search keyword or product name. Defaults to "".
 
         Returns:
-            List[Dict[str, Any]]: List of matching product summary dictionaries.
+            List[Dict[str, Any]]: List of matching product dictionaries with details.
         """
         products = InventoryRepository.search_products(db, query)
         logger.info(f"Inventory search for '{query}' returned {len(products)} match(es).")

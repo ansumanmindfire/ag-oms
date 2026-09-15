@@ -15,7 +15,14 @@ from app.config import logger
 
 class SearchProductsInput(BaseModel):
     """Input schema for searching products in inventory."""
-    query: str = Field(..., description="Natural language search term, category, or product name (e.g., 'laptop', 'phone', 'macbook', 'shoes')")
+    query: Optional[str] = Field(
+        default="",
+        description=(
+            "Search keyword for filtering products. If a keyword is provided (e.g., 'phone', 'laptop'), "
+            "it searches and returns products matching that specific keyword. "
+            "If left as an empty string '', it returns all products and their available quantities in the store inventory."
+        ),
+    )
 
 
 class CheckInventoryInput(BaseModel):
@@ -32,6 +39,12 @@ class PlaceOrderInput(BaseModel):
     remarks: Optional[str] = Field("Order placed via Agent Tool", description="Optional order remarks")
 
 
+class SendOrderConfirmationEmailInput(BaseModel):
+    """Input schema for dispatching a consolidated order confirmation email."""
+    customer_email: str = Field(..., description="Customer email address to send the receipt to")
+    order_ids: list[str] = Field(..., description="List of Order IDs to consolidate into the confirmation email")
+
+
 # Custom Tools
 
 class SearchProductsTool(BaseTool):
@@ -39,14 +52,14 @@ class SearchProductsTool(BaseTool):
 
     name: str = "search_inventory_products"
     description: str = (
-        "Useful for searching the inventory catalog when the user provides a category (e.g. 'laptop', 'phone', 'tv', 'shoe', 'watch'), "
-        "brand, or product keyword. Returns matching product objects with keys: "
-        "'product_id', 'product_name', 'category', 'description', 'price', and 'quantity_available'."
+        "Useful for querying inventory products. If query is provided with a keyword (e.g. 'phone', 'laptop', 'tv'), "
+        "it searches and returns products matching that specific keyword. If query is an empty string '', "
+        "it returns all products and their available quantities in the store inventory."
     )
     args_schema: Type[BaseModel] = SearchProductsInput
     db: Any = Field(default=None, exclude=True)
 
-    def _run(self, query: str) -> str:
+    def _run(self, query: Optional[str] = "") -> str:
         """Synchronous execution of product search."""
         logger.info(f"Tool execution [search_inventory_products]: query='{query}'")
         results = InventoryService.search_products(db=self.db, query=query)
@@ -74,14 +87,14 @@ class CheckInventoryTool(BaseTool):
 
 
 class PlaceOrderTool(BaseTool):
-    """Tool for executing order placement, inventory deduction, audit logging, and email confirmation."""
+    """Tool for executing order placement, inventory deduction, and audit logging."""
 
     name: str = "place_order"
     description: str = (
-        "Useful for placing a new customer purchase order. Atomically deducts inventory stock, "
-        "creates order and audit records, and dispatches a customer email confirmation. "
-        "Returns a JSON object with keys: 'success' (bool), 'order_id' (str), 'total_amount' (float), "
-        "and 'status' (str)."
+        "Useful for placing a customer purchase order for a product. Atomically deducts inventory stock "
+        "and creates order and audit records. Note: This tool does NOT send emails. "
+        "Returns a JSON object with keys: 'success' (bool), 'order_id' (str), 'product_name' (str), "
+        "'quantity' (int), 'unit_price' (float), and 'total_price' (float)."
     )
     args_schema: Type[BaseModel] = PlaceOrderInput
     db: Any = Field(default=None, exclude=True)
@@ -104,8 +117,39 @@ class PlaceOrderTool(BaseTool):
                 quantity=quantity,
                 customer_email=customer_email,
                 remarks=remarks or "Order placed via Agent Tool",
+                send_email=False,
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as err:
             logger.error(f"Error in PlaceOrderTool: {err}")
             return json.dumps({"success": False, "error": str(err)})
+
+
+class SendOrderConfirmationEmailTool(BaseTool):
+    """Tool for sending a single consolidated confirmation email for one or multiple placed orders."""
+
+    name: str = "send_order_confirmation_email"
+    description: str = (
+        "Useful for sending a single consolidated confirmation email to the customer after all orders "
+        "have been placed with place_order. Consolidates all given order_ids into one itemized receipt "
+        "with grand total. Returns a JSON object with 'success' (bool), 'email_sent' (bool), and 'grand_total' (float)."
+    )
+    args_schema: Type[BaseModel] = SendOrderConfirmationEmailInput
+    db: Any = Field(default=None, exclude=True)
+
+    def _run(self, customer_email: str, order_ids: list[str]) -> str:
+        """Synchronous execution of consolidated email dispatch."""
+        logger.info(
+            f"Tool execution [send_order_confirmation_email]: email='{customer_email}', order_ids={order_ids}"
+        )
+        try:
+            result = OrderService.send_order_confirmation(
+                db=self.db,
+                order_ids=order_ids,
+                customer_email=customer_email,
+            )
+            return json.dumps(result, indent=2, default=str)
+        except Exception as err:
+            logger.error(f"Error in SendOrderConfirmationEmailTool: {err}")
+            return json.dumps({"success": False, "error": str(err)})
+

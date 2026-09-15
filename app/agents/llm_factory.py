@@ -35,6 +35,18 @@ def get_llm(temperature: float = 0.1) -> Any:
             model=model_name,
             groq_api_key=settings.GROQ_API_KEY,
             temperature=temperature,
+            max_tokens=700,
+        )
+
+    # Cerebras routing
+    if provider == "cerebras":
+        logger.info(f"Initializing Cerebras LLM: '{model_name}'")
+        return ChatOpenAI(
+            model=model_name,
+            api_key=settings.CEREBRAS_API_KEY,
+            base_url="https://api.cerebras.ai/v1",
+            temperature=temperature,
+            max_tokens=800,
         )
 
     # Gemini routing
@@ -44,3 +56,28 @@ def get_llm(temperature: float = 0.1) -> Any:
         google_api_key=settings.GOOGLE_API_KEY,
         temperature=temperature,
     )
+
+
+def extract_text_content(content: Any) -> str:
+    """Extract clean string content whether it is a str or a list of content blocks."""
+    if not content:
+        return ""
+
+    if isinstance(content, str):
+        raw_text = content
+    elif isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(str(item["text"]))
+            elif isinstance(item, str):
+                parts.append(item)
+            else:
+                parts.append(str(item))
+        raw_text = "\n".join(parts)
+    else:
+        raw_text = str(content)
+
+    # Escape dollar signs to prevent markdown renderers (like Streamlit) from treating prices as LaTeX math formulas
+    return raw_text.replace(r"\$", "$").replace("$", r"\$")
+

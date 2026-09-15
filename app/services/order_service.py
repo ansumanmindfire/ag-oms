@@ -25,8 +25,9 @@ class OrderService:
         quantity: int,
         customer_email: str,
         remarks: str = "Order placed via Agent",
+        send_email: bool = False,
     ) -> Dict[str, Any]:
-        """Process a new product order placement with atomic inventory deduction and email notification.
+        """Process a new product order placement with atomic inventory deduction.
 
         Args:
             db (Session): Database session.
@@ -34,9 +35,10 @@ class OrderService:
             quantity (int): Units requested.
             customer_email (str): Email address of customer.
             remarks (str): Optional remarks string. Defaults to "Order placed via Agent".
+            send_email (bool): Whether to dispatch email immediately. Defaults to False.
 
         Returns:
-            Dict[str, Any]: Execution details dictionary summarizing order status and confirmation message.
+            Dict[str, Any]: Execution details dictionary summarizing order status.
 
         Raises:
             ProductNotFoundException: If product_id does not exist in inventory.
@@ -88,14 +90,15 @@ class OrderService:
             logger.error(f"Failed to place order atomically: {err}")
             raise err
 
-        # Send order confirmation email to customer after commit
-        email_sent = EmailService.send_order_confirmation_email(
-            customer_email=customer_email,
-            order_id=order.order_id,
-            product_name=product_name,
-            quantity=quantity,
-            total_price=total_price,
-        )
+        email_sent = False
+        if send_email:
+            email_sent = EmailService.send_order_confirmation_email(
+                customer_email=customer_email,
+                order_id=order.order_id,
+                product_name=product_name,
+                quantity=quantity,
+                total_price=total_price,
+            )
 
         return {
             "success": True,
@@ -103,11 +106,75 @@ class OrderService:
             "product_id": order.product_id,
             "product_name": product_name,
             "quantity": order.quantity,
+            "unit_price": unit_price,
             "status": order.status,
             "customer_email": order.customer_email,
             "total_price": float(total_price) if total_price is not None else 0.0,
             "email_sent": email_sent,
-            "message": f"Order #{order.order_id} placed successfully for {quantity} unit(s) of '{product_name}'. Confirmation email dispatched.",
+            "message": f"Order #{order.order_id} placed successfully for {quantity} unit(s) of '{product_name}'.",
+        }
+
+    @staticmethod
+    def send_order_confirmation(
+        db: Session,
+        order_ids: list,
+        customer_email: str,
+    ) -> Dict[str, Any]:
+        """Aggregate order details across one or multiple order IDs and dispatch a single consolidated email.
+
+        Args:
+            db (Session): Database session.
+            order_ids (list): List of order IDs to consolidate.
+            customer_email (str): Target customer email address.
+
+        Returns:
+            Dict[str, Any]: Confirmation details including items consolidated, grand total, and email status.
+        """
+        logger.info(f"Sending consolidated order confirmation email for Order IDs: {order_ids} to '{customer_email}'")
+
+        orders_info = []
+        grand_total = 0.0
+
+        for oid in order_ids:
+            oid_str = str(oid).strip()
+            order_rec = OrderRepository.get_order(db, oid_str)
+            if not order_rec:
+                continue
+
+            product = InventoryRepository.get_product(db, order_rec.product_id)
+            p_name = product.product_name if product else order_rec.product_id
+            u_price = float(product.price) if product else 0.0
+            tot = u_price * order_rec.quantity
+            grand_total += tot
+
+            orders_info.append({
+                "order_id": order_rec.order_id,
+                "product_name": p_name,
+                "quantity": order_rec.quantity,
+                "unit_price": u_price,
+                "total_price": tot,
+            })
+
+        if not orders_info:
+            return {
+                "success": False,
+                "email_sent": False,
+                "error": "No valid order records found for the provided Order IDs.",
+            }
+
+        email_sent = EmailService.send_consolidated_order_email(
+            customer_email=customer_email,
+            orders_info=orders_info,
+        )
+
+        return {
+            "success": True,
+            "email_sent": email_sent,
+            "customer_email": customer_email,
+            "order_count": len(orders_info),
+            "grand_total": grand_total,
+            "items": orders_info,
+            "message": f"Consolidated confirmation email dispatched to '{customer_email}' for {len(orders_info)} item(s) (Grand Total: ${grand_total:,.2f}).",
         }
 
     @staticmethod
