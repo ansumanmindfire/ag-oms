@@ -3,23 +3,25 @@
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
 from langchain_core.messages import HumanMessage
 
 from app.config import logger
 from app.agents.state import AgentState
 from app.agents.intent_classifier import classify_intent
-from app.agents.order_agent import create_order_node
-from app.agents.cancellation_agent import create_cancellation_node
+from app.agents.order_agent import order_node
+from app.agents.cancellation_agent import cancellation_node
 from app.agents.enquiry_agent import enquiry_node
 from app.agents.llm_factory import extract_text_content
 from app.repositories import ChatRepository
 
-# Global in-memory checkpointer for multi-turn session persistence
-memory_checkpointer = MemorySaver()
+# Persistent SQLite checkpointer for multi-turn session persistence
+db_connection = sqlite3.connect("data/db.sqlite", check_same_thread=False)
+checkpointer = SqliteSaver(db_connection)
 
 
-def create_oms_graph(db: Session):
+def create_oms_graph():
     """Builds and compiles the master Order Management System LangGraph.
 
     Graph Architecture:
@@ -33,8 +35,8 @@ def create_oms_graph(db: Session):
 
     # Add nodes
     workflow.add_node("intent_classifier", classify_intent)
-    workflow.add_node("order_node", create_order_node(db))
-    workflow.add_node("cancellation_node", create_cancellation_node(db))
+    workflow.add_node("order_node", order_node)
+    workflow.add_node("cancellation_node", cancellation_node)
     workflow.add_node("enquiry_node", enquiry_node)
 
     # Add entry edge
@@ -46,7 +48,9 @@ def create_oms_graph(db: Session):
     workflow.add_edge("enquiry_node", END)
 
     # Compile with checkpointer for automatic multi-turn state persistence
-    return workflow.compile(checkpointer=memory_checkpointer)
+    return workflow.compile(checkpointer=checkpointer)
+
+oms_graph = create_oms_graph()
 
 
 def run_oms_graph(
@@ -79,12 +83,10 @@ def run_oms_graph(
     active_session_id = session_rec.id
     logger.info(f"Executing LangGraph OMS workflow for session '{active_session_id}', prompt: '{prompt}'")
 
-    # Compile the graph with db bindings
-    graph = create_oms_graph(db=db)
     config = {"configurable": {"thread_id": active_session_id}}
 
     # Invoke the graph with the new human message
-    result = graph.invoke(
+    result = oms_graph.invoke(
         {"messages": [HumanMessage(content=prompt)]},
         config=config,
     )

@@ -37,6 +37,10 @@ class IntentClassification(BaseModel):
     )
 
 
+# Instantiate router LLM with structured output
+router_llm = get_llm(temperature=0.0).with_structured_output(IntentClassification)
+
+
 def classify_intent(
     state: AgentState,
 ) -> Command[Literal["order_node", "cancellation_node", "enquiry_node", END]]:
@@ -44,10 +48,8 @@ def classify_intent(
     messages = list(state.get("messages", []))
     logger.info("Classifying customer intent in LangGraph workflow...")
 
-    llm = get_llm(temperature=0.0).with_structured_output(IntentClassification)
     prompt_messages = [SystemMessage(content=INTENT_ROUTER_SYSTEM_PROMPT)] + messages
-
-    decision: IntentClassification = llm.invoke(prompt_messages)
+    decision: IntentClassification = router_llm.invoke(prompt_messages)
     logger.info(f"Intent classified: target='{decision.target}'")
 
     # If the user is just saying hello or asking general questions, reply directly and end the turn
