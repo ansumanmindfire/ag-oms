@@ -1,12 +1,12 @@
 """LangChain custom tools for cancelling orders and restoring stock."""
 
 import json
-from typing import Optional, Type, Any
+from typing import Optional, Type
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
-from sqlalchemy.orm import Session
 
 from app.services.order_service import OrderService
+from app.database import SessionLocal
 from app.config import logger
 
 
@@ -29,7 +29,6 @@ class CancelOrderTool(BaseTool):
         "'quantity_restored' (int), and 'message' (str)."
     )
     args_schema: Type[BaseModel] = CancelOrderInput
-    db: Any = Field(default=None, exclude=True)
 
     def _run(
         self,
@@ -40,12 +39,13 @@ class CancelOrderTool(BaseTool):
         """Synchronous execution of order cancellation."""
         logger.info(f"Tool execution [cancel_order]: order_id='{order_id}', email='{customer_email}'")
         try:
-            result = OrderService.cancel_order(
-                db=self.db,
-                order_id=order_id,
-                customer_email=customer_email,
-                remarks=remarks or "Order cancelled via Agent Tool",
-            )
+            with SessionLocal() as db:
+                result = OrderService.cancel_order(
+                    db=db,
+                    order_id=order_id,
+                    customer_email=customer_email,
+                    remarks=remarks or "Order cancelled via Agent Tool",
+                )
             return json.dumps(result, indent=2, default=str)
         except Exception as err:
             logger.error(f"Error in CancelOrderTool: {err}")

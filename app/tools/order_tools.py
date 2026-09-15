@@ -1,13 +1,13 @@
 """LangChain custom tools for checking inventory stock and placing orders."""
 
 import json
-from typing import Optional, Type, Any
+from typing import Optional, Type
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
-from sqlalchemy.orm import Session
 
 from app.services.inventory_service import InventoryService
 from app.services.order_service import OrderService
+from app.database import SessionLocal
 from app.config import logger
 
 
@@ -57,12 +57,12 @@ class SearchProductsTool(BaseTool):
         "it returns all products and their available quantities in the store inventory."
     )
     args_schema: Type[BaseModel] = SearchProductsInput
-    db: Any = Field(default=None, exclude=True)
 
     def _run(self, query: Optional[str] = "") -> str:
         """Synchronous execution of product search."""
         logger.info(f"Tool execution [search_inventory_products]: query='{query}'")
-        results = InventoryService.search_products(db=self.db, query=query)
+        with SessionLocal() as db:
+            results = InventoryService.search_products(db=db, query=query)
         return json.dumps(results, indent=2, default=str)
 
 
@@ -77,12 +77,12 @@ class CheckInventoryTool(BaseTool):
         "'product_name' (str), 'unit_price' (float), and 'current_stock' (int)."
     )
     args_schema: Type[BaseModel] = CheckInventoryInput
-    db: Any = Field(default=None, exclude=True)
 
     def _run(self, product_id: str, quantity: int) -> str:
         """Synchronous execution of stock check."""
         logger.info(f"Tool execution [check_inventory_stock]: product_id='{product_id}', quantity={quantity}")
-        result = InventoryService.check_stock(db=self.db, product_id=product_id, quantity=quantity)
+        with SessionLocal() as db:
+            result = InventoryService.check_stock(db=db, product_id=product_id, quantity=quantity)
         return json.dumps(result, indent=2, default=str)
 
 
@@ -97,7 +97,6 @@ class PlaceOrderTool(BaseTool):
         "'quantity' (int), 'unit_price' (float), and 'total_price' (float)."
     )
     args_schema: Type[BaseModel] = PlaceOrderInput
-    db: Any = Field(default=None, exclude=True)
 
     def _run(
         self,
@@ -111,14 +110,15 @@ class PlaceOrderTool(BaseTool):
             f"Tool execution [place_order]: product_id='{product_id}', quantity={quantity}, email='{customer_email}'"
         )
         try:
-            result = OrderService.order_product(
-                db=self.db,
-                product_id=product_id,
-                quantity=quantity,
-                customer_email=customer_email,
-                remarks=remarks or "Order placed via Agent Tool",
-                send_email=False,
-            )
+            with SessionLocal() as db:
+                result = OrderService.order_product(
+                    db=db,
+                    product_id=product_id,
+                    quantity=quantity,
+                    customer_email=customer_email,
+                    remarks=remarks or "Order placed via Agent Tool",
+                    send_email=False,
+                )
             return json.dumps(result, indent=2, default=str)
         except Exception as err:
             logger.error(f"Error in PlaceOrderTool: {err}")
@@ -135,7 +135,6 @@ class SendOrderConfirmationEmailTool(BaseTool):
         "with grand total. Returns a JSON object with 'success' (bool), 'email_sent' (bool), and 'grand_total' (float)."
     )
     args_schema: Type[BaseModel] = SendOrderConfirmationEmailInput
-    db: Any = Field(default=None, exclude=True)
 
     def _run(self, customer_email: str, order_ids: list[str]) -> str:
         """Synchronous execution of consolidated email dispatch."""
@@ -143,11 +142,12 @@ class SendOrderConfirmationEmailTool(BaseTool):
             f"Tool execution [send_order_confirmation_email]: email='{customer_email}', order_ids={order_ids}"
         )
         try:
-            result = OrderService.send_order_confirmation(
-                db=self.db,
-                order_ids=order_ids,
-                customer_email=customer_email,
-            )
+            with SessionLocal() as db:
+                result = OrderService.send_order_confirmation(
+                    db=db,
+                    order_ids=order_ids,
+                    customer_email=customer_email,
+                )
             return json.dumps(result, indent=2, default=str)
         except Exception as err:
             logger.error(f"Error in SendOrderConfirmationEmailTool: {err}")
