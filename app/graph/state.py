@@ -1,5 +1,3 @@
-"""AgentState schema for LangGraph agentic workflows."""
-
 from typing import Annotated, Sequence, Optional
 from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage

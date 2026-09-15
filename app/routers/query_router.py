@@ -1,10 +1,8 @@
-"""FastAPI APIRouter for agent query and conversational interaction endpoints."""
-
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas import AgentChatRequest, AgentChatResponse
-from app.agents import run_oms_graph
+from app.graph import run_oms_graph
 
 router = APIRouter(prefix="/query", tags=["Agent Query"])
 

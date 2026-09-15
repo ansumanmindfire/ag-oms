@@ -1,36 +1,33 @@
-"""Master StateGraph for the Agentic Order Management System (LangGraph)."""
-
+import sqlite3
+from pathlib import Path
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
-import sqlite3
 from langchain_core.messages import HumanMessage
 
-from app.config import logger
-from app.agents.state import AgentState
-from app.agents.intent_classifier import classify_intent
-from app.agents.order_agent import order_node
-from app.agents.cancellation_agent import cancellation_node
-from app.agents.enquiry_agent import enquiry_node
-from app.agents.llm_factory import extract_text_content
+from app.config import settings, logger
+from app.graph.state import AgentState
+from app.graph.nodes import (
+    classify_intent,
+    order_node,
+    cancellation_node,
+    enquiry_node,
+)
+from app.core.llm import extract_text_content
 from app.repositories import ChatRepository
 
+# Ensure parent folder (/data) exists
+checkpoint_path = Path(settings.CHECKPOINT_DB_PATH)
+checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+
 # Persistent SQLite checkpointer for multi-turn session persistence
-db_connection = sqlite3.connect("data/db.sqlite", check_same_thread=False)
+db_connection = sqlite3.connect(str(checkpoint_path), check_same_thread=False)
 checkpointer = SqliteSaver(db_connection)
 
 
 def create_oms_graph():
-    """Builds and compiles the master Order Management System LangGraph.
 
-    Graph Architecture:
-        START -> intent_classifier
-        intent_classifier --(Command)--> order_node | cancellation_node | enquiry_node | END
-        order_node -> END
-        cancellation_node -> END
-        enquiry_node -> END
-    """
     workflow = StateGraph(AgentState)
 
     # Add nodes
@@ -49,6 +46,7 @@ def create_oms_graph():
 
     # Compile with checkpointer for automatic multi-turn state persistence
     return workflow.compile(checkpointer=checkpointer)
+
 
 oms_graph = create_oms_graph()
 

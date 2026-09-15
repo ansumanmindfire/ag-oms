@@ -1,4 +1,4 @@
-"""Centralized LLM Factory for routing models across Gemini, Groq, and OpenRouter."""
+"""Centralized LLM Factory for routing models across Gemini, Groq, Cerebras, and OpenRouter."""
 
 from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -13,7 +13,8 @@ def get_llm(temperature: float = 0.1) -> Any:
     Supported Providers:
     1. openrouter
     2. groq
-    3. gemini / google
+    3. cerebras
+    4. gemini / google
     """
     provider = settings.LLM_PROVIDER.lower().strip()
     model_name = settings.LLM_MODEL.strip()
@@ -79,4 +80,3 @@ def extract_text_content(content: Any) -> str:
         raw_text = str(content)
 
     return raw_text.replace(r"\$", "$").replace("$", r"\$")
-

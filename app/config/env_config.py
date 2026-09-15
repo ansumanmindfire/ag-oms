@@ -24,6 +24,7 @@ class Settings:
 
     # Storage Paths & Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./data/db.sqlite")
+    CHECKPOINT_DB_PATH: str = os.getenv("CHECKPOINT_DB_PATH", "data/db.sqlite")
 
     # API Keys & LLM Configuration
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
