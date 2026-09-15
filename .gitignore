@@ -3,6 +3,7 @@ __pycache__/
 
 .env
 
+data/
 data/*.sqlite
 data/*.db
 data/qdrant_storage/
