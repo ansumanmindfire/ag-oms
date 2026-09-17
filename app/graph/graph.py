@@ -38,7 +38,6 @@ def create_oms_graph():
 
 
 oms_graph = create_oms_graph()
-oms_graph.print_ascii()
 
 def run_oms_graph(
     prompt: str,
