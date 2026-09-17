@@ -33,8 +33,7 @@ class Settings:
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "groq")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen/qwen3.6-27b")
-
-
+    ORCHESTRATION_MODE: str = os.getenv("ORCHESTRATION_MODE", "langgraph")  # "langgraph" or "supervisor"
 
     # Qdrant Vector DB Configuration
     QDRANT_HOST: str = os.getenv("QDRANT_HOST", "localhost")

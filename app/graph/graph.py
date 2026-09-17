@@ -1,28 +1,18 @@
-import sqlite3
-from pathlib import Path
+import uuid
 from typing import Optional, Dict, Any
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_core.messages import HumanMessage
 
-from app.config import settings, logger
+from app.config import logger
 from app.graph.state import AgentState
+from app.graph.checkpointer import checkpointer
 from app.graph.nodes import (
     orchestrator_node,
     order_node,
     cancellation_node,
     enquiry_node,
 )
-import uuid
 from app.core.llm import extract_text_content
-
-# Ensure parent folder (/data) exists
-checkpoint_path = Path(settings.CHECKPOINT_DB_PATH)
-checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-
-# Persistent SQLite checkpointer for multi-turn session persistence
-db_connection = sqlite3.connect(str(checkpoint_path), check_same_thread=False)
-checkpointer = SqliteSaver(db_connection)
 
 
 def create_oms_graph():
