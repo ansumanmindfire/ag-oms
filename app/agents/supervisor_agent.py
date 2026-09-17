@@ -7,9 +7,11 @@ from langchain.agents import create_agent
 
 from app.config import logger
 from app.core.llm import get_llm, extract_text_content
-from app.agents.order_agent import order_agent
-from app.agents.cancellation_agent import cancellation_agent
-from app.agents.enquiry_agent import enquiry_agent
+from app.graph.subgraphs import (
+    order_subgraph,
+    cancellation_subgraph,
+    enquiry_subgraph,
+)
 from app.prompts import SUPERVISOR_SYSTEM_PROMPT
 from app.graph.checkpointer import checkpointer
 
@@ -56,7 +58,7 @@ class CallOrderAgentTool(BaseTool):
     def _run(self, request: str) -> str:
         """Synchronous execution of OrderAgent call."""
         logger.info(f"Supervisor Tool Execution [call_order_agent]: request='{request}'")
-        result = order_agent.agent.invoke({"messages": [HumanMessage(content=request)]})
+        result = order_subgraph.invoke({"messages": [HumanMessage(content=request)]})
         return extract_text_content(result["messages"][-1].content)
 
 
@@ -73,7 +75,7 @@ class CallCancellationAgentTool(BaseTool):
     def _run(self, request: str) -> str:
         """Synchronous execution of CancellationAgent call."""
         logger.info(f"Supervisor Tool Execution [call_cancellation_agent]: request='{request}'")
-        result = cancellation_agent.agent.invoke({"messages": [HumanMessage(content=request)]})
+        result = cancellation_subgraph.invoke({"messages": [HumanMessage(content=request)]})
         return extract_text_content(result["messages"][-1].content)
 
 
@@ -92,7 +94,7 @@ class CallEnquiryAgentTool(BaseTool):
     def _run(self, request: str) -> str:
         """Synchronous execution of EnquiryAgent call."""
         logger.info(f"Supervisor Tool Execution [call_enquiry_agent]: request='{request}'")
-        result = enquiry_agent.agent.invoke({"messages": [HumanMessage(content=request)]})
+        result = enquiry_subgraph.invoke({"messages": [HumanMessage(content=request)]})
         return extract_text_content(result["messages"][-1].content)
 
 
