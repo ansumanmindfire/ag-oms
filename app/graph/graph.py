@@ -6,11 +6,11 @@ from langchain_core.messages import HumanMessage
 from app.config import logger
 from app.graph.state import AgentState
 from app.graph.checkpointer import checkpointer
-from app.graph.nodes import (
-    orchestrator_node,
-    order_node,
-    cancellation_node,
-    enquiry_node,
+from app.graph.nodes import orchestrator_node
+from app.graph.subgraphs import (
+    order_subgraph,
+    cancellation_subgraph,
+    enquiry_subgraph,
 )
 from app.core.llm import extract_text_content
 
@@ -21,25 +21,24 @@ def create_oms_graph():
 
     # Add nodes
     workflow.add_node("orchestrator_node", orchestrator_node)
-    workflow.add_node("order_node", order_node)
-    workflow.add_node("cancellation_node", cancellation_node)
-    workflow.add_node("enquiry_node", enquiry_node)
+    workflow.add_node("order_subgraph", order_subgraph)
+    workflow.add_node("cancellation_subgraph", cancellation_subgraph)
+    workflow.add_node("enquiry_subgraph", enquiry_subgraph)
 
     # Add entry edge
     workflow.add_edge(START, "orchestrator_node")
 
-
-    # Connect specialist nodes to END
-    workflow.add_edge("order_node", END)
-    workflow.add_edge("cancellation_node", END)
-    workflow.add_edge("enquiry_node", END)
+    # Connect specialist subgraphs to END
+    workflow.add_edge("order_subgraph", END)
+    workflow.add_edge("cancellation_subgraph", END)
+    workflow.add_edge("enquiry_subgraph", END)
 
     # Compile with checkpointer for automatic multi-turn state persistence
     return workflow.compile(checkpointer=checkpointer)
 
 
 oms_graph = create_oms_graph()
-
+oms_graph.print_ascii()
 
 def run_oms_graph(
     prompt: str,

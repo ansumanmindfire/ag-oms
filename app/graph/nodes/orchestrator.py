@@ -12,7 +12,7 @@ from app.agents.orchestrator_agent import orchestrator_agent, RouteDecision
 
 def orchestrator_node(
     state: AgentState,
-) -> Command[Literal["order_node", "cancellation_node", "enquiry_node", END]]:
+) -> Command[Literal["order_subgraph", "cancellation_subgraph", "enquiry_subgraph", END]]:
     """
     Args:
         state: Current graph state containing conversation messages.
@@ -31,7 +31,7 @@ def orchestrator_node(
 
     logger.info(f"Orchestrator Agent routed to destination: '{destination}'")
 
-    if destination not in ["order_node", "cancellation_node", "enquiry_node"]:
+    if destination not in ["order_subgraph", "cancellation_subgraph", "enquiry_subgraph"]:
         greeting_text = (
             reply
             or "Hi! I am your AI assistant for the Order Management System. How can I assist you today?"

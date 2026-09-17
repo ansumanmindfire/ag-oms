@@ -11,7 +11,7 @@ from app.prompts import INTENT_ROUTER_SYSTEM_PROMPT
 class RouteDecision(BaseModel):
     """Input schema for routing the conversation to a specialist agent."""
 
-    destination: Literal["order_node", "cancellation_node", "enquiry_node", "general_reply"] = Field(
+    destination: Literal["order_subgraph", "cancellation_subgraph", "enquiry_subgraph", "general_reply"] = Field(
         ...,
         description="The target destination node for the conversation based on user intent."
     )
