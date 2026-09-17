@@ -13,7 +13,7 @@ services:
       - REDIS_HOST=redis
     volumes:
       - ./app:/code/app
-      - ./data:/code/data
+      - sqlite_data:/code/data
       - ./logs:/code/logs
     depends_on:
       - qdrant
@@ -38,3 +38,6 @@ services:
     volumes:
       - ./data/redis_data:/data
     restart: always
+
+volumes:
+  sqlite_data:
