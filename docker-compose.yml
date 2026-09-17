@@ -39,5 +39,17 @@ services:
       - ./data/redis_data:/data
     restart: always
 
+  db-viewer:
+    image: ghcr.io/coleifer/sqlite-web:latest
+    container_name: ag_oms_db_viewer
+    ports:
+      - "8080:8080"
+    volumes:
+      - sqlite_data:/data:ro
+    command: -r -H 0.0.0.0 -p 8080 /data/db.sqlite
+    depends_on:
+      - api
+    restart: always
+
 volumes:
   sqlite_data:
