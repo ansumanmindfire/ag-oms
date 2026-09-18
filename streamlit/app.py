@@ -1,5 +1,4 @@
-"""Streamlit web application interface for Agentic Order Management System (AG-oms)."""
-
+import json
 import requests
 import streamlit as st
 
@@ -8,6 +7,7 @@ BASE_URL = "http://localhost:8000"
 HEALTH_ENDPOINT = f"{BASE_URL}/"
 UPLOAD_ENDPOINT = f"{BASE_URL}/api/v1/upload"
 QUERY_ENDPOINT = f"{BASE_URL}/api/v1/query"
+QUERY_STREAM_ENDPOINT = f"{BASE_URL}/api/v1/query/stream"
 
 # Streamlit Page Configuration
 st.set_page_config(
@@ -89,29 +89,47 @@ if prompt := st.chat_input("How can I help you today?"):
         st.write(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Processing request..."):
-            try:
-                payload = {
-                    "prompt": prompt,
-                    "session_id": st.session_state.session_id,
-                }
-                chat_res = requests.post(QUERY_ENDPOINT, json=payload)
+        payload = {
+            "prompt": prompt,
+            "session_id": st.session_state.session_id,
+        }
 
-                if chat_res.status_code == 200:
-                    data = chat_res.json()
-                    answer_text = data.get("answer", "No response received.")
-                    returned_session_id = data.get("session_id")
+        try:
+            response = requests.post(QUERY_STREAM_ENDPOINT, json=payload, stream=True, timeout=90)
 
-                    if returned_session_id:
-                        st.session_state.session_id = returned_session_id
+            if response.status_code == 200:
 
-                    st.write(answer_text)
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": answer_text,
-                    })
-                else:
-                    err_msg = chat_res.json().get("detail", chat_res.text) if chat_res.headers.get("content-type") == "application/json" else chat_res.text
-                    st.error(f"API Error ({chat_res.status_code}): {err_msg}")
-            except requests.exceptions.RequestException as e:
-                st.error(f"Connection error: {e}")
+                def stream_tokens():
+                    for raw_line in response.iter_lines():
+                        if not raw_line:
+                            continue
+                        decoded_line = raw_line.decode("utf-8")
+                        if decoded_line.startswith("data: "):
+                            try:
+                                event = json.loads(decoded_line[6:].strip())
+
+                                if event.get("type") == "session":
+                                    st.session_state.session_id = event.get("session_id")
+
+                                elif event.get("type") == "token":
+                                    yield event.get("content", "")
+
+                            except Exception:
+                                continue
+
+                full_response = st.write_stream(stream_tokens())
+
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": full_response if full_response else "",
+                })
+            else:
+                err_msg = (
+                    response.json().get("detail", response.text)
+                    if response.headers.get("content-type") == "application/json"
+                    else response.text
+                )
+                st.error(f"API Error ({response.status_code}): {err_msg}")
+        except requests.exceptions.RequestException as e:
+            st.error(f"Connection error: {e}")
+
