@@ -1,6 +1,8 @@
+import json
 from fastapi import APIRouter, status
+from fastapi.responses import StreamingResponse
 from app.schemas import AgentChatRequest, AgentChatResponse
-from app.services.orchestration_service import process_query
+from app.services.orchestration_service import process_query, stream_query
 
 router = APIRouter(prefix="/query", tags=["Agent Query"])
 
@@ -20,3 +22,27 @@ def query(data: AgentChatRequest):
         session_id=result["session_id"],
         answer=result["answer"],
     )
+
+
+@router.post("/stream")
+def query_stream(data: AgentChatRequest):
+    """Server-Sent Events (SSE) streaming endpoint for agent responses.
+
+    Streams:
+    - 'session': Initial session identifier
+    - 'token': Incremental tokens of the synthesized answer
+    """
+    def sse_event_generator():
+        for event in stream_query(prompt=data.prompt, session_id=data.session_id):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        sse_event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
