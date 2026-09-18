@@ -1,7 +1,7 @@
 import uuid
-from typing import Dict, Any, Optional, List, Type
+from typing import Dict, Any, Optional, List, Type, Generator
 from pydantic import BaseModel, Field
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, AIMessageChunk
 from langchain_core.tools import BaseTool
 from langchain.agents import create_agent
 
@@ -161,6 +161,39 @@ class SupervisorAgent:
             "session_id": active_session_id,
             "answer": answer_text,
         }
+
+    def stream(
+        self,
+        prompt: str,
+        session_id: Optional[str] = None,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """Streams the Supervisor Agent execution yielding token chunks.
+
+        Args:
+            prompt: Natural language customer request.
+            session_id: Optional session ID for multi-turn tracking.
+
+        Yields:
+            Dict event items with 'type': 'session' | 'token'.
+        """
+        if not prompt or not prompt.strip():
+            raise ValueError("Prompt cannot be empty.")
+
+        active_session_id = session_id.strip() if (session_id and session_id.strip()) else str(uuid.uuid4())
+        logger.info(f"Streaming Supervisor Agent for session '{active_session_id}', prompt: '{prompt}'")
+
+        config = {"configurable": {"thread_id": active_session_id}}
+        yield {"type": "session", "session_id": active_session_id}
+
+        for chunk, _ in self.agent.stream(
+            {"messages": [HumanMessage(content=prompt)]},
+            config=config,
+            stream_mode="messages",
+        ):
+            if isinstance(chunk, (AIMessage, AIMessageChunk)):
+                text = extract_text_content(getattr(chunk, "content", ""))
+                if text:
+                    yield {"type": "token", "content": text}
 
 
 supervisor_agent = SupervisorAgent()

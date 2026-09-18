@@ -2,7 +2,7 @@
 
 from app.graph.state import AgentState
 from app.graph.checkpointer import checkpointer
-from app.graph.graph import oms_graph, create_oms_graph, run_oms_graph
+from app.graph.graph import oms_graph, create_oms_graph, run_oms_graph, stream_oms_graph
 
 __all__ = [
     "AgentState",
@@ -10,5 +10,7 @@ __all__ = [
     "oms_graph",
     "create_oms_graph",
     "run_oms_graph",
+    "stream_oms_graph",
 ]
+
 

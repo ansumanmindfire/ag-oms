@@ -1,7 +1,7 @@
 import uuid
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Generator
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk
 
 from app.config import logger
 from app.graph.state import AgentState
@@ -80,3 +80,33 @@ def run_oms_graph(
         "answer": answer_text,
     }
 
+
+def stream_oms_graph(
+    prompt: str,
+    session_id: Optional[str] = None,
+) -> Generator[Dict[str, Any], None, None]:
+    """Streams the OMS StateGraph execution yielding token chunks
+
+    Args:
+        prompt: Customer's incoming text request
+        session_id: Optional chat session ID from the client
+    """
+    if not prompt or not prompt.strip():
+        raise ValueError("Prompt cannot be empty.")
+
+    active_session_id = session_id.strip() if (session_id and session_id.strip()) else str(uuid.uuid4())
+    logger.info(f"Streaming LangGraph OMS workflow for session '{active_session_id}', prompt: '{prompt}'")
+
+    config = {"configurable": {"thread_id": active_session_id}}
+    yield {"type": "session", "session_id": active_session_id}
+
+    for _, (chunk, _)  in oms_graph.stream(
+        {"messages": [HumanMessage(content=prompt)]},
+        config=config,
+        stream_mode="messages",
+        subgraphs=True,
+    ):
+        if isinstance(chunk, (AIMessage, AIMessageChunk)):
+            text = extract_text_content(getattr(chunk, "content", ""))
+            if text:
+                yield {"type": "token", "content": text}
