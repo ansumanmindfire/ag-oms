@@ -1,109 +1,16 @@
-import uuid
-from typing import Dict, Any, Optional, List, Type, Generator
-from pydantic import BaseModel, Field
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, AIMessageChunk
-from langchain_core.tools import BaseTool
+from typing import Dict, Any, Optional, Generator
+from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk
 from langchain.agents import create_agent
 
 from app.config import logger
-from app.core.llm import get_llm, extract_text_content
-from app.graph.subgraphs import (
-    order_subgraph,
-    cancellation_subgraph,
-    enquiry_subgraph,
-)
+from app.constants import AGENT_TEMPERATURE
+from app.llm import get_llm, extract_text_content
+from app.tools.agent_tools import supervisor_tools
 from app.prompts import SUPERVISOR_SYSTEM_PROMPT
 from app.graph.checkpointer import checkpointer
+from app.utils.session import resolve_session_id
+from app.utils.streaming import get_tool_status_message
 
-
-# Pydantic Input Schemas for Supervisor Tools
-
-class CallOrderAgentInput(BaseModel):
-    """Input schema for delegating tasks to the specialized Order Agent."""
-    request: str = Field(
-        ...,
-        description="Detailed customer request for ordering products, purchasing items, checking stock availability, or inquiring about available product catalog."
-    )
-
-
-class CallCancellationAgentInput(BaseModel):
-    """Input schema for delegating tasks to the specialized Cancellation Agent."""
-    request: str = Field(
-        ...,
-        description="Detailed customer request for cancelling an existing order or verifying order cancellation status."
-    )
-
-
-class CallEnquiryAgentInput(BaseModel):
-    """Input schema for delegating technical product spec questions to Enquiry Agent."""
-    request: str = Field(
-        ...,
-        description="Detailed customer enquiry about product comparisons, side-by-side feature differences, technical specifications, smart features, Wi-Fi, battery life, display, noise ratings, or warranty."
-    )
-
-
-# BaseTool Subclasses wrapping the shared agent singletons
-
-class CallOrderAgentTool(BaseTool):
-    """Tool for delegating order placement, stock verification, product pricing, and inventory search tasks to OrderAgent."""
-
-    name: str = "call_order_agent"
-    description: str = (
-        "Useful for purchasing products, placing orders, checking product stock, "
-        "inquiring about available items in stock, or getting product prices. "
-        "Delegates task to the specialized Order Agent."
-    )
-    args_schema: Type[BaseModel] = CallOrderAgentInput
-
-    def _run(self, request: str) -> str:
-        """Synchronous execution of OrderAgent call."""
-        logger.info(f"Supervisor Tool Execution [call_order_agent]: request='{request}'")
-        result = order_subgraph.invoke({"messages": [HumanMessage(content=request)]})
-        return extract_text_content(result["messages"][-1].content)
-
-
-class CallCancellationAgentTool(BaseTool):
-    """Tool for delegating order cancellations, stock restoration, and refund verification tasks to CancellationAgent."""
-
-    name: str = "call_cancellation_agent"
-    description: str = (
-        "Useful for cancelling existing customer orders or verifying order cancellation status. "
-        "Delegates task to the specialized Cancellation Agent."
-    )
-    args_schema: Type[BaseModel] = CallCancellationAgentInput
-
-    def _run(self, request: str) -> str:
-        """Synchronous execution of CancellationAgent call."""
-        logger.info(f"Supervisor Tool Execution [call_cancellation_agent]: request='{request}'")
-        result = cancellation_subgraph.invoke({"messages": [HumanMessage(content=request)]})
-        return extract_text_content(result["messages"][-1].content)
-
-
-class CallEnquiryAgentTool(BaseTool):
-    """Tool for delegating technical product specifications and warranty queries to EnquiryAgent."""
-
-    name: str = "call_enquiry_agent"
-    description: str = (
-        "Useful for comparing products in the store, side-by-side feature comparisons, "
-        "technical product specifications, smart features, Wi-Fi capabilities, battery life, "
-        "display specs, noise levels, or warranty details. "
-        "Delegates task to the specialized Enquiry Agent."
-    )
-    args_schema: Type[BaseModel] = CallEnquiryAgentInput
-
-    def _run(self, request: str) -> str:
-        """Synchronous execution of EnquiryAgent call."""
-        logger.info(f"Supervisor Tool Execution [call_enquiry_agent]: request='{request}'")
-        result = enquiry_subgraph.invoke({"messages": [HumanMessage(content=request)]})
-        return extract_text_content(result["messages"][-1].content)
-
-
-# Supervisor Agent Tools
-supervisor_tools: List[BaseTool] = [
-    CallOrderAgentTool(),
-    CallCancellationAgentTool(),
-    CallEnquiryAgentTool(),
-]
 
 
 class SupervisorAgent:
@@ -114,7 +21,7 @@ class SupervisorAgent:
     """
 
     def __init__(self):
-        self._llm = get_llm(temperature=0.0)
+        self._llm = get_llm(temperature=AGENT_TEMPERATURE)
         self.agent = create_agent(
             model=self._llm,
             tools=supervisor_tools,
@@ -139,7 +46,7 @@ class SupervisorAgent:
         if not prompt or not prompt.strip():
             raise ValueError("Prompt cannot be empty.")
 
-        active_session_id = session_id.strip() if (session_id and session_id.strip()) else str(uuid.uuid4())
+        active_session_id = resolve_session_id(session_id)
         logger.info(f"Running Supervisor Agent for session '{active_session_id}', prompt: '{prompt}'")
 
         # thread_id config enables the checkpointer to auto-load/save conversation history
@@ -167,33 +74,44 @@ class SupervisorAgent:
         prompt: str,
         session_id: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
-        """Streams the Supervisor Agent execution yielding token chunks.
+        """Streams the Supervisor Agent execution yielding status and token chunks.
 
         Args:
             prompt: Natural language customer request.
             session_id: Optional session ID for multi-turn tracking.
 
         Yields:
-            Dict event items with 'type': 'session' | 'token'.
+            Dict event items with 'type': 'session' | 'status' | 'token'.
         """
         if not prompt or not prompt.strip():
             raise ValueError("Prompt cannot be empty.")
 
-        active_session_id = session_id.strip() if (session_id and session_id.strip()) else str(uuid.uuid4())
+        active_session_id = resolve_session_id(session_id)
         logger.info(f"Streaming Supervisor Agent for session '{active_session_id}', prompt: '{prompt}'")
 
         config = {"configurable": {"thread_id": active_session_id}}
         yield {"type": "session", "session_id": active_session_id}
 
-        for chunk, _ in self.agent.stream(
+        for mode, payload in self.agent.stream(
             {"messages": [HumanMessage(content=prompt)]},
             config=config,
-            stream_mode="messages",
+            stream_mode=["updates", "messages"],
         ):
-            if isinstance(chunk, (AIMessage, AIMessageChunk)):
-                text = extract_text_content(getattr(chunk, "content", ""))
-                if text:
-                    yield {"type": "token", "content": text}
+            if mode == "updates" and isinstance(payload, dict):
+                if "model" in payload:
+                    msgs = payload["model"].get("messages", [])
+                    if msgs and hasattr(msgs[-1], "tool_calls") and msgs[-1].tool_calls:
+                        for tc in msgs[-1].tool_calls:
+                            yield {"type": "status", "content": get_tool_status_message(tc.get("name", ""))}
+                elif "tools" in payload:
+                    yield {"type": "status", "content": "Agent completed task"}
+
+            elif mode == "messages":
+                chunk = payload[0]
+                if isinstance(chunk, (AIMessage, AIMessageChunk)):
+                    text = extract_text_content(getattr(chunk, "content", ""))
+                    if text:
+                        yield {"type": "token", "content": text}
 
 
 supervisor_agent = SupervisorAgent()
