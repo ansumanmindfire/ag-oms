@@ -6,7 +6,6 @@ import streamlit as st
 BASE_URL = "http://localhost:8000"
 HEALTH_ENDPOINT = f"{BASE_URL}/"
 UPLOAD_ENDPOINT = f"{BASE_URL}/api/v1/upload"
-QUERY_ENDPOINT = f"{BASE_URL}/api/v1/query"
 QUERY_STREAM_ENDPOINT = f"{BASE_URL}/api/v1/query/stream"
 
 # Streamlit Page Configuration
@@ -56,7 +55,7 @@ with st.sidebar:
                 res = requests.post(UPLOAD_ENDPOINT, files=files_payload)
 
                 if res.status_code == 200:
-                    st.success(f"Product Specifications successfully added.")
+                    st.success("Product Specifications successfully added.")
                 else:
                     st.error(f"Upload failed ({res.status_code}): {res.text}")
             except requests.exceptions.RequestException as e:
@@ -72,9 +71,7 @@ with st.sidebar:
 
 # Main Chat Interface
 st.title("Order Management Assistant")
-st.markdown(
-    "Place/ Cancel/ Enquire orders."
-)
+st.markdown("Place/ Cancel/ Enquire orders.")
 st.divider()
 
 # Render Chat History
@@ -95,41 +92,52 @@ if prompt := st.chat_input("How can I help you today?"):
         }
 
         try:
-            response = requests.post(QUERY_STREAM_ENDPOINT, json=payload, stream=True, timeout=90)
+            response = requests.post(QUERY_STREAM_ENDPOINT, json=payload, stream=True)
 
             if response.status_code == 200:
+                status_container = st.status("Thinking...", expanded=True)
+                message_placeholder = st.empty()
 
                 def stream_tokens():
-                    for raw_line in response.iter_lines():
-                        if not raw_line:
+                    has_tokens = False
+                    for line in response.iter_lines():
+                        if not line:
                             continue
-                        decoded_line = raw_line.decode("utf-8")
-                        if decoded_line.startswith("data: "):
-                            try:
-                                event = json.loads(decoded_line[6:].strip())
+                        decoded = line.decode("utf-8") if isinstance(line, bytes) else line
+                        if not decoded.startswith("data: "):
+                            continue
+                        event = json.loads(decoded[6:].strip())
 
-                                if event.get("type") == "session":
-                                    st.session_state.session_id = event.get("session_id")
+                        if event.get("type") == "session":
+                            st.session_state.session_id = event.get("session_id")
 
-                                elif event.get("type") == "token":
-                                    yield event.get("content", "")
+                        elif event.get("type") == "status":
+                            status_container.write(event.get("content", ""))
 
-                            except Exception:
-                                continue
+                        elif event.get("type") == "token":
+                            if not has_tokens:
+                                has_tokens = True
+                                status_container.update(label="Agent reasoning complete", state="complete", expanded=False)
+                            yield event.get("content", "")
 
-                full_response = st.write_stream(stream_tokens())
+                    if not has_tokens:
+                        status_container.update(label="Agent reasoning complete", state="complete", expanded=False)
+
+                full_response = ""
+                for token in stream_tokens():
+                    full_response += token
+                    message_placeholder.markdown(full_response + "|")
+                message_placeholder.markdown(full_response)
 
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": full_response if full_response else "",
+                    "content": full_response,
                 })
             else:
-                err_msg = (
-                    response.json().get("detail", response.text)
-                    if response.headers.get("content-type") == "application/json"
-                    else response.text
-                )
+                try:
+                    err_msg = response.json().get("detail", response.text)
+                except (ValueError, AttributeError):
+                    err_msg = response.text
                 st.error(f"API Error ({response.status_code}): {err_msg}")
         except requests.exceptions.RequestException as e:
             st.error(f"Connection error: {e}")
-
