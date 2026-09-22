@@ -1,44 +1,27 @@
-"""Orchestrator node for LangGraph workflow routing using Command(goto=...)."""
-
-from typing import Literal, Optional
-from langgraph.types import Command
-from langgraph.graph import END
-from langchain_core.messages import AIMessage
+from typing import Dict, Any
+from langchain_core.messages import SystemMessage
 
 from app.config import logger
+from app.constants import AGENT_TEMPERATURE
 from app.graph.state import AgentState
-from app.agents.orchestrator_agent import orchestrator_agent, RouteDecision
+from app.llm import get_llm
+from app.tools.agent_tools import supervisor_tools
+from app.prompts import SUPERVISOR_SYSTEM_PROMPT
+
+llm = get_llm(temperature=AGENT_TEMPERATURE)
+model_with_tools = llm.bind_tools(supervisor_tools)
 
 
-def orchestrator_node(
-    state: AgentState,
-) -> Command[Literal["order_subgraph", "cancellation_subgraph", "enquiry_subgraph", END]]:
-    """
+def orchestrator_node(state: AgentState) -> Dict[str, Any]:
+    """Orchestrator model node that coordinates specialist agents via agent tools.
+
     Args:
         state: Current graph state containing conversation messages.
 
     Returns:
-        Command specifying the next node to execute or END with reply.
+        Dict updating messages with the LLM's response (tool call or final answer).
     """
-    messages = list(state.get("messages", []))
-    logger.info("Executing Orchestrator node...")
-
-    result = orchestrator_agent.agent.invoke({"messages": messages})
-    decision: Optional[RouteDecision] = result.get("structured_response")
-
-    destination = decision.destination if decision else "general_reply"
-    reply = decision.reply if decision else None
-
-    logger.info(f"Orchestrator Agent routed to destination: '{destination}'")
-
-    if destination not in ["order_subgraph", "cancellation_subgraph", "enquiry_subgraph"]:
-        greeting_text = (
-            reply
-            or "Hi! I am your AI assistant for the Order Management System. How can I assist you today?"
-        )
-        return Command(
-            update={"messages": [AIMessage(content=greeting_text)]},
-            goto=END,
-        )
-
-    return Command(goto=destination)
+    logger.info("Executing Orchestrator model node...")
+    messages = [SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT)] + list(state.get("messages", []))
+    response = model_with_tools.invoke(messages)
+    return {"messages": [response]}
