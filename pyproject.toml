@@ -38,7 +38,8 @@ package-mode = false
 [dependency-groups]
 dev = [
     "pytest-asyncio (>=1.4.0,<2.0.0)",
-    "ipykernel (>=7.3.0,<8.0.0)"
+    "ipykernel (>=7.3.0,<8.0.0)",
+    "deepeval (>=4.2.3,<5.0.0)"
 ]
 
 [build-system]

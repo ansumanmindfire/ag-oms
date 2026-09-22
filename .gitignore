@@ -8,3 +8,5 @@ data/*.sqlite
 data/*.db
 data/qdrant_storage/
 logs/
+
+.deepeval
