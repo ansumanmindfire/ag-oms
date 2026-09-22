@@ -6,8 +6,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.config import logger
+from app.constants import LLM_TEMPERATURE
 from app.graph.state import AgentState
-from app.core.llm import get_llm
+from app.llm import get_llm
 from app.prompts import ENQUIRY_AGENT_SYSTEM_PROMPT
 from app.tools.enquiry_tools import SearchProductSpecsTool
 
@@ -15,7 +16,7 @@ from app.tools.enquiry_tools import SearchProductSpecsTool
 def create_enquiry_subgraph():
     """Build and compile the product enquiry specialist subgraph with native ToolNode."""
     enquiry_tools = [SearchProductSpecsTool()]
-    llm = get_llm(temperature=0.1)
+    llm = get_llm(temperature=LLM_TEMPERATURE)
     model_with_tools = llm.bind_tools(enquiry_tools)
 
     def enquiry_model_node(state: AgentState) -> Dict[str, Any]:

@@ -2,7 +2,7 @@ import json
 from fastapi import APIRouter, status
 from fastapi.responses import StreamingResponse
 from app.schemas import AgentChatRequest, AgentChatResponse
-from app.services.orchestration_service import process_query, stream_query
+from app.services.orchestration_service import OrchestrationService
 
 router = APIRouter(prefix="/query", tags=["Agent Query"])
 
@@ -14,7 +14,7 @@ def query(data: AgentChatRequest):
     Receives natural language prompt and optional session_id, delegates to the configured
     orchestration workflow (LangGraph or Supervisor)
     """
-    result = process_query(
+    result = OrchestrationService.process_query(
         prompt=data.prompt,
         session_id=data.session_id,
     )
@@ -33,7 +33,7 @@ def query_stream(data: AgentChatRequest):
     - 'token': Incremental tokens of the synthesized answer
     """
     def sse_event_generator():
-        for event in stream_query(prompt=data.prompt, session_id=data.session_id):
+        for event in OrchestrationService.stream_query(prompt=data.prompt, session_id=data.session_id):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(

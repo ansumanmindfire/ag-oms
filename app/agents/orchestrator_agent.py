@@ -4,7 +4,8 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain.agents import create_agent
 
-from app.core.llm import get_llm
+from app.llm import get_llm
+from app.constants import AGENT_TEMPERATURE
 from app.prompts import INTENT_ROUTER_SYSTEM_PROMPT
 
 
@@ -25,7 +26,7 @@ class OrchestratorAgent:
     """Specialized Agent for analyzing user intent and delegating to specialist agents."""
 
     def __init__(self):
-        self._llm = get_llm(temperature=0.0)
+        self._llm = get_llm(temperature=AGENT_TEMPERATURE)
         self.agent = create_agent(
             model=self._llm,
             response_format=RouteDecision,

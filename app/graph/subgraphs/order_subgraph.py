@@ -6,8 +6,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.config import logger
+from app.constants import LLM_TEMPERATURE
 from app.graph.state import AgentState
-from app.core.llm import get_llm
+from app.llm import get_llm
 from app.prompts import ORDER_AGENT_SYSTEM_PROMPT
 from app.tools.order_tools import (
     SearchProductsTool,
@@ -25,7 +26,7 @@ def create_order_subgraph():
         PlaceOrderTool(),
         SendOrderConfirmationEmailTool(),
     ]
-    llm = get_llm(temperature=0.1)
+    llm = get_llm(temperature=LLM_TEMPERATURE)
     model_with_tools = llm.bind_tools(order_tools)
 
     def order_model_node(state: AgentState) -> Dict[str, Any]:

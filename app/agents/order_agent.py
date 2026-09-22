@@ -8,7 +8,8 @@ from app.tools.order_tools import (
     PlaceOrderTool,
     SendOrderConfirmationEmailTool,
 )
-from app.core.llm import get_llm
+from app.llm import get_llm
+from app.constants import LLM_TEMPERATURE
 from app.prompts import ORDER_AGENT_SYSTEM_PROMPT
 
 
@@ -22,7 +23,7 @@ class OrderAgent:
             PlaceOrderTool(),
             SendOrderConfirmationEmailTool(),
         ]
-        self._llm = get_llm(temperature=0.1)
+        self._llm = get_llm(temperature=LLM_TEMPERATURE)
         self.agent = create_agent(
             model=self._llm,
             tools=self.tools,

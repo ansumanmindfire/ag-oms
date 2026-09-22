@@ -6,8 +6,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.config import logger
+from app.constants import LLM_TEMPERATURE
 from app.graph.state import AgentState
-from app.core.llm import get_llm
+from app.llm import get_llm
 from app.prompts import CANCELLATION_AGENT_SYSTEM_PROMPT
 from app.tools.cancellation_tools import CancelOrderTool
 
@@ -15,7 +16,7 @@ from app.tools.cancellation_tools import CancelOrderTool
 def create_cancellation_subgraph():
     """Build and compile the cancellation specialist subgraph with native ToolNode."""
     cancellation_tools = [CancelOrderTool()]
-    llm = get_llm(temperature=0.1)
+    llm = get_llm(temperature=LLM_TEMPERATURE)
     model_with_tools = llm.bind_tools(cancellation_tools)
 
     def cancellation_model_node(state: AgentState) -> Dict[str, Any]:
