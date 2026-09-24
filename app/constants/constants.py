@@ -27,6 +27,7 @@ class ROUTE_CONSTANTS(str, Enum):
 # LLM Temperature Configurations
 LLM_TEMPERATURE: float = 0.1
 AGENT_TEMPERATURE: float = 0.0
+LLM_MAX_TOKENS: int = 800
 
 
 # Streaming Tool Execution Status Messages
