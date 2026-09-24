@@ -48,5 +48,5 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["app/tests"]
+testpaths = ["app/tests", "evals"]
 

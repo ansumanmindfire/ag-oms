@@ -1,0 +1,11 @@
+{
+  "python_version": "3.11",
+  "dependencies": ["."],
+  "graphs": {
+    "oms_orchestrator": "./app/graph/graph.py:oms_graph_api",
+    "cancellation_agent": "./app/graph/subgraphs/cancellation_subgraph.py:cancellation_subgraph",
+    "order_agent": "./app/graph/subgraphs/order_subgraph.py:order_subgraph",
+    "enquiry_agent": "./app/graph/subgraphs/enquiry_subgraph.py:enquiry_subgraph"
+  },
+  "env": ".env"
+}
