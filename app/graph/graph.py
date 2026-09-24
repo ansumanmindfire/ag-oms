@@ -13,7 +13,7 @@ from app.utils.session import resolve_session_id
 from app.utils.streaming import get_tool_status_message
 
 
-def create_oms_graph():
+def create_oms_graph(checkpointer_instance=None):
     """Build and compile the OMS StateGraph using the Agent-as-a-Tool supervisor pattern."""
     workflow = StateGraph(AgentState)
 
@@ -37,11 +37,17 @@ def create_oms_graph():
     # Return from tools back to orchestrator for final synthesis
     workflow.add_edge("tools", "orchestrator_node")
 
-    # Compile with checkpointer for automatic multi-turn state persistence
-    return workflow.compile(checkpointer=checkpointer)
+    # Compile with checkpointer if provided (for standalone FastAPI/Streamlit)
+    if checkpointer_instance is not None:
+        return workflow.compile(checkpointer=checkpointer_instance)
+    return workflow.compile()
 
 
-oms_graph = create_oms_graph()
+# Standalone graph with SQLite checkpointer for FastAPI/Streamlit
+oms_graph = create_oms_graph(checkpointer_instance=checkpointer)
+
+# Clean graph without checkpointer for LangGraph CLI / LangSmith Studio (server handles persistence)
+oms_graph_api = create_oms_graph(checkpointer_instance=None)
 
 def run_oms_graph(
     prompt: str,

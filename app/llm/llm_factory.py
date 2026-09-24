@@ -1,14 +1,14 @@
 """Centralized LLM Factory for routing models across Gemini, Groq, Cerebras, and OpenRouter."""
 
-from typing import Any
+from typing import Any, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from app.config import settings, logger
-from app.constants import LLM_TEMPERATURE
+from app.constants import LLM_TEMPERATURE, LLM_MAX_TOKENS
 
 
-def get_llm(temperature: float = LLM_TEMPERATURE) -> Any:
+def get_llm(temperature: float = LLM_TEMPERATURE, max_tokens: int = LLM_MAX_TOKENS) -> Any:
     """Instantiate and return the LLM based on configured LLM_PROVIDER and LLM_MODEL.
 
     Supported Providers:
@@ -28,6 +28,7 @@ def get_llm(temperature: float = LLM_TEMPERATURE) -> Any:
             api_key=settings.OPENROUTER_API_KEY,
             base_url="https://openrouter.ai/api/v1",
             temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     # Groq routing
@@ -37,7 +38,7 @@ def get_llm(temperature: float = LLM_TEMPERATURE) -> Any:
             model=model_name,
             groq_api_key=settings.GROQ_API_KEY,
             temperature=temperature,
-            max_tokens=700,
+            max_tokens=max_tokens
         )
 
     # Cerebras routing
@@ -48,7 +49,7 @@ def get_llm(temperature: float = LLM_TEMPERATURE) -> Any:
             api_key=settings.CEREBRAS_API_KEY,
             base_url="https://api.cerebras.ai/v1",
             temperature=temperature,
-            max_tokens=800,
+            max_tokens=max_tokens
         )
 
     # Gemini routing
@@ -57,6 +58,7 @@ def get_llm(temperature: float = LLM_TEMPERATURE) -> Any:
         model=model_name,
         google_api_key=settings.GOOGLE_API_KEY,
         temperature=temperature,
+        max_output_tokens=max_tokens,
     )
 
 
